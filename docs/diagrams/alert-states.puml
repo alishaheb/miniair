@@ -1,0 +1,27 @@
+@startuml alert-states
+title MiniAir - lifecycle of one pair's alert (UML state machine)
+
+skinparam shadowing false
+skinparam defaultFontName Helvetica
+
+[*] --> NoAlert
+
+state NoAlert : pair not in conflict
+
+state "Active" as Active {
+  state Predicted : minima will be infringed\nwithin the look-ahead
+  state LossOfSeparation : minima infringed now
+  state "Holding" as Holding : conflict not seen this cycle;\nmissed < clear_after (2)
+
+  [*] --> Predicted
+  Predicted --> LossOfSeparation : separation lost\n/ emit UPDATED
+  LossOfSeparation --> Predicted : separation regained, still converging\n/ emit UPDATED
+  Predicted --> Holding : not detected
+  LossOfSeparation --> Holding : not detected
+  Holding --> Predicted : detected again\n(UPDATED only if severity changed)
+  Holding --> LossOfSeparation : detected again\n(UPDATED only if severity changed)
+}
+
+NoAlert --> Active : conflict detected\n/ emit NEW
+Holding --> NoAlert : missed = clear_after\n/ emit CLEARED
+@enduml

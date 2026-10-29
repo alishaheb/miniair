@@ -1,0 +1,48 @@
+@startuml sequence
+title MiniAir - one surveillance cycle (UML sequence diagram)
+
+skinparam shadowing false
+skinparam defaultFontName Helvetica
+autonumber
+
+participant "OpenSky API" as api
+participant "Ingestion\n(Python)" as ingest
+queue "flights.states" as states
+participant "Engine\n(C++)" as engine
+participant "TrackStore" as tracks
+participant "ConflictDetector" as detector
+participant "AlertManager" as alertmgr
+queue "conflicts.alerts" as alerts
+
+== Snapshot N is published ==
+ingest -> api : GET /states/all?lamin..lomax
+api --> ingest : {time: N, states: [...]}
+ingest -> ingest : from_opensky() per row\n(drop incomplete rows)
+loop each aircraft
+  ingest -> states : produce(key=icao24, state JSON)
+end
+ingest -> states : flush()
+
+== Engine consumes snapshot N ==
+loop each message
+  states -> engine : consume()
+  engine -> engine : parse_state_report()\n(non-throwing; bad input rejected)
+  engine -> engine : level-flight band\n(|vr| < 150 ft/min -> 0)
+  engine -> tracks : update(state)\n(older reports ignored)
+end
+
+alt first message of snapshot N+1 arrives\nor no message for 500 ms
+  engine -> tracks : prune(N, max age 60 s)
+  engine -> tracks : picture_at(N)
+  tracks --> engine : all tracks extrapolated to time N
+  engine -> detector : detect(picture)
+  detector -> detector : latitude sweep, vertical pre-filter
+  detector -> detector : check_pair(): horizontal window\nAND vertical window AND [0, look-ahead]
+  detector --> engine : conflicts (sorted by pair)
+  engine -> alertmgr : update(conflicts, N)
+  alertmgr --> engine : NEW / UPDATED / CLEARED events
+  loop each event
+    engine -> alerts : produce(key="a|b", alert JSON)
+  end
+end
+@enduml

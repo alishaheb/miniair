@@ -1,0 +1,51 @@
+@startuml component
+title MiniAir - UML component diagram
+
+skinparam componentStyle uml2
+skinparam shadowing false
+skinparam defaultFontName Helvetica
+
+cloud "OpenSky Network\nREST API" as opensky
+actor "Controller /\nOperator" as operator
+
+node "Docker Compose (Linux)" {
+
+  component "Ingestion service\n(Python)" as ingest {
+    portout " " as ingest_out
+  }
+
+  node "Apache Kafka (KRaft)" as kafka {
+    queue "flights.states\n1 partition, key = icao24" as states
+    queue "conflicts.alerts\nkey = icao24 pair" as alerts
+  }
+
+  component "Conflict engine\n(C++17)" as engine {
+    component "MessageCodec" as codec
+    component "TrackStore" as tracks
+    component "ConflictDetector" as detector
+    component "AlertManager" as alertmgr
+    component "Engine\n(cycle per snapshot)" as core
+  }
+}
+
+component "Alert service + dashboard\n(Java, Sprint 3)" as dashboard #line.dashed
+
+interface "HTTPS /states/all\n(OAuth2 client credentials)" as rest
+opensky -- rest
+ingest ..> rest : polls every 30 s
+
+note right of ingest
+  Sources: opensky | synthetic | replay
+  Sinks:   kafka | stdout
+end note
+
+ingest_out --> states : JSON state\nper aircraft
+states --> codec : consume
+codec --> core : StateReport
+core --> tracks : update / prune /\npicture_at(t)
+core --> detector : detect(picture)
+core --> alertmgr : update(conflicts)
+alertmgr --> alerts : NEW / UPDATED /\nCLEARED (JSON)
+alerts ..> dashboard : consume
+dashboard ..> operator : display
+@enduml
