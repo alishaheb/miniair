@@ -20,6 +20,7 @@ packages = ["miniair_ingest"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]  # Import miniair_ingest without installing it
 
 [tool.ruff]
 line-length = 120
