@@ -1,0 +1,17 @@
+# Overrides for the system test: replay the synthetic scenario once, as fast
+# as possible, with a fixed start time so the expected alerts are exact.
+services:
+  ingestion:
+    environment:
+      MINIAIR_SOURCE: synthetic
+      MINIAIR_REALTIME: "false"
+      MINIAIR_LOOP: "false"
+    command: ["--start-time", "1700000000"]
+    restart: "no"
+
+  engine:
+    command: ["--input", "kafka", "--brokers", "kafka:9092", "--group", "miniair-engine-it"]
+    restart: "no"
+
+  kafka:
+    ports: !reset []

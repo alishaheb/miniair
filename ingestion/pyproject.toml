@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "miniair-ingest"
+version = "0.1.0"
+description = "Ingestion service for the MiniAir conflict detector: OpenSky ADS-B data to Kafka"
+requires-python = ">=3.10"
+dependencies = ["requests>=2.31", "confluent-kafka>=2.3"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+miniair-ingest = "miniair_ingest.app:main"
+
+[tool.setuptools]
+packages = ["miniair_ingest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]

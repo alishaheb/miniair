@@ -1,0 +1,97 @@
+# MiniAir: ingestion -> Kafka -> C++ conflict engine -> Kafka.
+#
+#   docker compose up --build                        # synthetic scenario, looping
+#   MINIAIR_SOURCE=opensky docker compose up --build # live ADS-B over southern England
+#
+# Settings can go in a .env file next to this one (see .env.example).
+
+name: miniair
+
+services:
+  kafka:
+    image: apache/kafka:3.9.0
+    hostname: kafka
+    ports:
+      - "29092:29092" # For tools running on the host machine
+    environment:
+      CLUSTER_ID: miniair-local-cluster-01
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller # KRaft mode: no ZooKeeper
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,HOST://:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false" # Topics are created explicitly by kafka-init
+      KAFKA_LOG_RETENTION_HOURS: 24
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 5s
+      timeout: 15s
+      retries: 30
+      start_period: 10s
+
+  # Creates the topics once Kafka is healthy, then exits.
+  # flights.states has ONE partition on purpose: conflict detection needs the
+  # whole traffic picture in order, so it cannot be split by aircraft. Scaling
+  # out would mean one topic and one engine per airspace sector.
+  kafka-init:
+    image: apache/kafka:3.9.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        for topic in flights.states conflicts.alerts; do
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists \
+            --topic "$$topic" --partitions 1 --replication-factor 1
+        done
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --describe
+    restart: "no"
+
+  engine:
+    build: ./engine
+    image: miniair/engine:dev
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    command:
+      - --input
+      - kafka
+      - --brokers
+      - kafka:9092
+      - --horizontal-nm
+      - ${MINIAIR_HORIZONTAL_NM:-5}
+      - --vertical-ft
+      - ${MINIAIR_VERTICAL_FT:-1000}
+      - --look-ahead-s
+      - ${MINIAIR_LOOK_AHEAD_S:-120}
+      - --min-altitude-ft
+      - ${MINIAIR_MIN_ALTITUDE_FT:-1000}
+    restart: unless-stopped
+
+  ingestion:
+    build: ./ingestion
+    image: miniair/ingestion:dev
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      MINIAIR_SOURCE: ${MINIAIR_SOURCE:-synthetic}
+      MINIAIR_SINK: kafka
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      MINIAIR_REALTIME: ${MINIAIR_REALTIME:-true}
+      MINIAIR_LOOP: ${MINIAIR_LOOP:-true}
+      MINIAIR_BBOX: ${MINIAIR_BBOX:-50.5,-2.5,53.0,1.5}
+      MINIAIR_POLL_INTERVAL_S: ${MINIAIR_POLL_INTERVAL_S:-30}
+      # Optional. Leave unset for anonymous access (400 credits a day).
+      OPENSKY_CLIENT_ID: ${OPENSKY_CLIENT_ID:-}
+      OPENSKY_CLIENT_SECRET: ${OPENSKY_CLIENT_SECRET:-}
+    restart: unless-stopped
