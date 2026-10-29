@@ -1,0 +1,24 @@
+# Build output
+build/
+build-*/
+cmake-build-*/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.venv/
+*.egg-info/
+
+# Local settings and secrets
+.env
+
+# Test and session output
+tests/integration/alerts.jsonl
+recordings/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store

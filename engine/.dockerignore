@@ -1,0 +1,6 @@
+build/
+build-*/
+cmake-build-*/
+compile_flags.txt
+Dockerfile
+.dockerignore

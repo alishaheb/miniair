@@ -1,0 +1,24 @@
+# Static analysis profile for engine sources (not tests).
+# Which checks back up which MISRA-style rules is listed in docs/misra-subset.md.
+Checks: >
+  -*,
+  bugprone-*,
+  cert-*,
+  clang-analyzer-*,
+  cppcoreguidelines-*,
+  misc-*,
+  modernize-*,
+  performance-*,
+  readability-*,
+  -bugprone-easily-swappable-parameters,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -readability-magic-numbers,
+  -modernize-use-trailing-return-type,
+  -readability-identifier-length,
+  -misc-non-private-member-variables-in-classes,
+  -misc-include-cleaner
+WarningsAsErrors: '*'
+HeaderFilterRegex: '.*/include/miniair/.*'
+CheckOptions:
+  - key: readability-function-cognitive-complexity.Threshold
+    value: '30'
